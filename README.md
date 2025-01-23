@@ -1,21 +1,25 @@
 # Kubernetes
 
+Orchestration framework.
+
 ## Concept
+
+See Avril Lavigne "Complicated".
 
 ### General
 
-- Object: yaml manifest based entity, some fields:
-  - apiVersion: kubernetes api version to use
-  - kind: what object e.g. "Deployment"
-  - metadata: for unique IDs (name, UID, optional namespace)
-  - spec: state for the object (different per object, contains nested specific fields)
-- Container: based on provided docker image
-- Pod: group of containers
+- `Object`: yaml manifest based entity, some fields:
+  - `apiVersion` kubernetes api version to use
+  - `kind` what object e.g. "Deployment"
+  - `metadata` for unique IDs (name, UID, optional namespace)
+  - `spec` state for the object (different per object, contains nested specific fields)
+- `Container`: based on provided docker image
+- `Pod`: group of containers
   - fyi a pod is only accessible by its internal IP address within the kubernetes cluster
     - expose pod as a service for outside use
-  - pods are ephemeral, created and renamend and replaced and deleted dynamically
-- Deployment: checks pod health, re-starts/terminates
-- Node: a virtual or physical machine running the pods
+  - **pods are ephemeral**, created and renamend and replaced and deleted dynamically
+- `Deployment`: checks pod health, re-starts/terminates
+- `Node`: a virtual or physical machine running the pods
 
 ### Network
 
@@ -53,51 +57,74 @@
 - service discovery: mechanism for viewing available EndpointSlice objects
 - definition, e.g. set of pods listening on TCP 9376, labelled "app.kubernetes.io/name=MyApp"
 
+  ```yaml
+  apiVersion: v1
+  kind: Service
+  metadata:
+  name: my-service
+  spec:
+  selector:
+      app.kubernetes.io/name: MyApp
+  ports:
+      - protocol: TCP
+      port: 80
+      targetPort: 9376
+  ```
+
+  - creates: a Service named `my-service`
+  - service uses: default ClusterIP service type
+  - service targets: TCP port 9376 on any pod with the `app.kubernetes.io/name: MyApp` label
+  - service is assigned: an IP address (cluster IP) used by the virtual IP address mechanism
+  - service controller **continuously** scans matching pods and updates the set of EndpointSlices
+  - fyi: targetPort is by default same as port
+
+NEXT https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
+
 ## Setup
 
 - install kubernetes
-  - windows powershell: winget install -e --id Kubernetes.kubectl
-  - test: kubectl version --client
-- install minikube (for running kubernetes cluster, needs Docker)
+  - windows powershell: `winget install -e --id Kubernetes.kubectl`
+  - test: `kubectl version --client`
+- install `minikube` (for running kubernetes cluster, needs Docker)
   - (see most up-to-date installer)
-- update minikube+kubernetes: minikube kubectl -- get po -A
+- update minikube+kubernetes: `minikube kubectl -- get po -A`
 
 ### Start
 
-- start cluster: minikube start
-- access cluster: kubectl get po -A
-- dashboard: minikube dashboard
+- start cluster: `minikube start`
+- access cluster: `kubectl get po -A`
+- dashboard: `minikube dashboard`
 
 ### Manage
 
-- pause: minikube pause
-- unpause: minikube unpause
-- haltcluster: minikube stop
-- change default memory limit (requires a restart): minikube config set memory 9001
-- browse catalog of easily installed kubernetes services: minikube addons list
-- create another cluster running an older kubernetes release: minikube start -p aged --kubernetes-version=v1.16.1
-- delete all clusters: minikube delete --all
+- pause: `minikube pause`
+- unpause: `minikube unpause`
+- haltcluster: `minikube stop`
+- change default memory limit (requires a restart): `minikube config set memory 9001`
+- browse catalog of easily installed kubernetes services: `minikube addons list`
+- create another cluster running an older kubernetes release: `minikube start -p aged --kubernetes-version=v1.16.1`
+- delete all clusters: `minikube delete --all`
 
 ### Deployment (from minikube example)
 
-- create sample: kubectl create deployment hello-minikube --image=kicbase/echo-server:1.0
-- expose port: kubectl expose deployment hello-minikube --type=NodePort --port=8080
-- see whether is running: kubectl get services hello-minikube
-- let minikube open browser (knows port): minikube service hello-minikube
-  - alternatively expose service's 8080 to 7080 and open in browser: kubectl port-forward service/hello-minikube 7080:8080
+- create sample: `kubectl create deployment hello-minikube --image=kicbase/echo-server:1.0`
+- expose port: `kubectl expose deployment hello-minikube --type=NodePort --port=8080`
+- see whether is running: `kubectl get services hello-minikube`
+- let minikube open browser (knows port): `minikube service hello-minikube`
+  - alternatively expose service's 8080 to 7080 and open in browser: `kubectl port-forward service/hello-minikube 7080:8080`
 
 ### Deployment (from kubernetes example)
 
-- create deployment: kubectl create deployment hello-node --image=registry.k8s.io/e2e-test-images/agnhost:2.39 -- /agnhost netexec --http-port=8080
-- check deployments: kubectl get deployments
-- check pods: kubectl get pods
-- check events: kubectl get events
-- check cfg: kubectl config view
-- check logs (replace pod name): kubectl logs current-pod-name
-- expose pod as a service: kubectl expose deployment hello-node --type=LoadBalancer --port=8080
-  - "--type=LoadBalancer" flag indicates that you want to expose your service outside of the cluster
-- check services: kubectl get services
-- on minikube access service: minikube service hello-node
+- create deployment: `kubectl create deployment hello-node --image=registry.k8s.io/e2e-test-images/agnhost:2.39 -- /agnhost netexec --http-port=8080`
+- check deployments: `kubectl get deployments`
+- check pods: `kubectl get pods`
+- check events: `kubectl get events`
+- check cfg: `kubectl config view`
+- check logs (replace pod name): `kubectl logs current-pod-name`
+- expose pod as a service: `kubectl expose deployment hello-node --type=LoadBalancer --port=8080`
+  - `--type=LoadBalancer` flag indicates that you want to expose your service outside of the cluster
+- check services: `kubectl get services`
+- on minikube access service: `minikube service hello-node`
   - on cloud it would get an IP
-- clean up service: kubectl delete service hello-node
-- clean up deployment: kubectl delete deployment hello-node
+- clean up service: `kubectl delete service hello-node`
+- clean up deployment: `kubectl delete deployment hello-node`
