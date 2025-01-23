@@ -56,27 +56,29 @@ See Avril Lavigne "Complicated".
   - or use Gateway API implementation instead
 - service discovery: mechanism for viewing available EndpointSlice objects
 - definition, e.g. set of pods listening on TCP 9376, labelled "app.kubernetes.io/name=MyApp"
-
-  ```yaml
-  apiVersion: v1
-  kind: Service
-  metadata:
-  name: my-service
-  spec:
-  selector:
-      app.kubernetes.io/name: MyApp
-  ports:
-      - protocol: TCP
-      port: 80
-      targetPort: 9376
-  ```
-
+  - (see my-service yaml below)
   - creates: a Service named `my-service`
   - service uses: default ClusterIP service type
   - service targets: TCP port 9376 on any pod with the `app.kubernetes.io/name: MyApp` label
   - service is assigned: an IP address (cluster IP) used by the virtual IP address mechanism
   - service controller **continuously** scans matching pods and updates the set of EndpointSlices
   - fyi: targetPort is by default same as port
+
+##### my-service.yaml
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+name: my-service
+spec:
+selector:
+    app.kubernetes.io/name: MyApp
+ports:
+    - protocol: TCP
+    port: 80
+    targetPort: 9376
+```
 
 NEXT https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
 
