@@ -45,42 +45,7 @@ See Avril Lavigne "Complicated".
 
 #### Service
 
-- expose app in cluster (even split across multiple backends) as a single endpoint
-- other aspect: for when pod A needs pod B where both are ephemeral and change, Service keeps track of that dependency
-- Service API: abstraction for exposing pods over a network
-- a service defines a logical set of endpoints each (usually) representing a pod along with access policy
-- example: stateless image-processing backend with 3 replicas where clients don't need to know which replica currently is available etc.
-- selector: targets set of pods by their labels
-  - without selector: ???
-- if workload speaks HTTP: can choose an Ingress (is not a Service type but an entry point to a cluster)
-  - or use Gateway API implementation instead
-- service discovery: mechanism for viewing available EndpointSlice objects
-- definition, e.g. set of pods listening on TCP 9376, labelled "app.kubernetes.io/name=MyApp"
-  - (see my-service yaml below)
-  - creates: a Service named `my-service`
-  - service uses: default ClusterIP service type
-  - service targets: TCP port 9376 on any pod with the `app.kubernetes.io/name: MyApp` label
-  - service is assigned: an IP address (cluster IP) used by the virtual IP address mechanism
-  - service controller **continuously** scans matching pods and updates the set of EndpointSlices
-  - fyi: targetPort is by default same as port
-
-##### my-service.yaml
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-name: my-service
-spec:
-selector:
-    app.kubernetes.io/name: MyApp
-ports:
-    - protocol: TCP
-    port: 80
-    targetPort: 9376
-```
-
-NEXT https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
+[See separate docs](k8s-service)
 
 ## Setup
 
