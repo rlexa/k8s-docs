@@ -55,6 +55,10 @@ See Avril Lavigne "Complicated".
 
 [See separate docs](k8s-gateway)
 
+#### EndpointSlice
+
+[See separate docs](k8s-endpoint-slice)
+
 ## Setup
 
 - install kubernetes
