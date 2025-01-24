@@ -47,6 +47,14 @@ See Avril Lavigne "Complicated".
 
 [See separate docs](k8s-service)
 
+#### Ingress
+
+[See separate docs](k8s-ingress)
+
+#### Gateway
+
+[See separate docs](k8s-gateway)
+
 ## Setup
 
 - install kubernetes

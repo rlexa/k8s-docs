@@ -37,7 +37,7 @@ ports:
 
 ## Ports
 
-- hint: multiple ports can be exposed
+- hint: multiple ports can be exposed (i.e. multiple `- name: name` sections)
 - hint: ports should have names (see yaml below)
   - the http-web-svc name will work even when containerPort changes
 
@@ -130,4 +130,54 @@ endpoints:
   - link slice to service by `kubernetes.io/service-name` on the slice
   - (fyi there are more rules here but not relevant for this docs)
 
-NEXT: https://kubernetes.io/docs/concepts/services-networking/service/#application-protocol
+## Service type
+
+- ClusterIP: cluster-internal IP (then use Ingress/Gateway to expose outside)
+  - fyi `.spec.clusterIP` can be set to own cluster IP (see `service-cluster-ip-range`)
+- NodePort: (do not understand)
+- LoadBalancer: exposes externally via balancer (must provide load balancing component to k8s)
+- ExternalName: maps to `externalName` field DNS (no proxy setup)
+
+## Environment vars
+
+- per active service e.g. `redis-primary` TCP 6379:
+  - relying on those in pods is not trivial as service needs to be created first
+
+```
+REDIS_PRIMARY_SERVICE_HOST=10.0.0.11
+REDIS_PRIMARY_SERVICE_PORT=6379
+REDIS_PRIMARY_PORT=tcp://10.0.0.11:6379
+REDIS_PRIMARY_PORT_6379_TCP=tcp://10.0.0.11:6379
+REDIS_PRIMARY_PORT_6379_TCP_PROTO=tcp
+REDIS_PRIMARY_PORT_6379_TCP_PORT=6379
+REDIS_PRIMARY_PORT_6379_TCP_ADDR=10.0.0.11
+```
+
+## DNS
+
+- always setup DNS addon for k8s
+- service `my-service` in namespace `my-ns` resolves to `my-service.my-ns`
+  - pods inside `my-ns` see the service by `my-service`
+  - if service has port `http` with protocol `TCP` then
+    - `_http._tcp.my-service.my-ns` queries port number and IP
+
+## External IPs
+
+- external IPs can be setup as route-to-service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app.kubernetes.io/name: MyApp
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 49152
+  externalIPs:
+    - 198.51.100.32
+```
