@@ -1,6 +1,6 @@
 # K8S Gateway
 
-[back](README#gateway)
+[back](README#entities)
 
 - makes network services available (extensible, role-oriented, protocol-aware configuration mechanism)
 - role-oriented: kinds are modeled after orga roles

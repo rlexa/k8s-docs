@@ -1,6 +1,6 @@
 # K8S Service
 
-[back](README#service)
+[back](README#entities)
 
 - expose app in cluster (even split across multiple backends) as a single endpoint
 - other aspect: for when pod A needs pod B where both are ephemeral and change, Service keeps track of that dependency

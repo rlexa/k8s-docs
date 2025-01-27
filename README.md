@@ -43,21 +43,12 @@ See Avril Lavigne "Complicated".
   - NetworkPolicy generally implemented by pod network implementation
   - Gateway API has many implementations (generic, bare-metal, cloud service particular etc.)
 
-#### Service
+### Entities
 
-[See separate docs](k8s-service)
-
-#### Ingress
-
-[See separate docs](k8s-ingress)
-
-#### Gateway
-
-[See separate docs](k8s-gateway)
-
-#### EndpointSlice
-
-[See separate docs](k8s-endpoint-slice)
+- [Service](k8s-service)
+- [Ingress](k8s-ingress) (obsolete)
+- [Gateway](k8s-gateway)
+- [EndpointSlice](k8s-endpoint-slice)
 
 ## Setup
 
