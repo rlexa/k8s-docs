@@ -6,9 +6,9 @@ Orchestration framework.
 
 See Avril Lavigne "Complicated".
 
-### General
+### General concept
 
-- `Object`: yaml manifest based entity, some fields:
+- `Object`: yaml manifest based entity ("base class"), some fields:
   - `apiVersion` kubernetes api version to use
   - `kind` what object e.g. "Deployment"
   - `metadata` for unique IDs (name, UID, optional namespace)
@@ -21,7 +21,7 @@ See Avril Lavigne "Complicated".
 - `Deployment`: checks pod health, re-starts/terminates
 - `Node`: a virtual or physical machine running the pods
 
-### Network
+### Network concept
 
 - IP per pod-in-cluster
   - each pod has private inner network for containers inside
@@ -43,12 +43,22 @@ See Avril Lavigne "Complicated".
   - NetworkPolicy generally implemented by pod network implementation
   - Gateway API has many implementations (generic, bare-metal, cloud service particular etc.)
 
-### Entities
+#### DNS etc.
+
+- [DNS](k8s-dns)
+- _TODO IPv4/IPv6 dual-stack_
+- _TODO topology aware routing_
+- _TODO networking on Windows_
+- _TODO Service ClusterIP allocation_
+- _TODO Service Internal Traffic Policy_
+
+## Entities
 
 - [Service](k8s-service)
 - [Ingress](k8s-ingress) (obsolete)
 - [Gateway](k8s-gateway)
 - [EndpointSlice](k8s-endpoint-slice)
+- [NetworkPolicies](https://kubernetes.io/docs/concepts/services-networking/network-policies/) (TODO when needed)
 
 ## Setup
 
