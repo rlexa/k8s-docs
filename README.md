@@ -43,14 +43,14 @@ See Avril Lavigne "Complicated".
   - NetworkPolicy generally implemented by pod network implementation
   - Gateway API has many implementations (generic, bare-metal, cloud service particular etc.)
 
-#### DNS etc.
+#### DNS
 
 - [DNS](k8s-dns)
 - _TODO IPv4/IPv6 dual-stack_
 - _TODO topology aware routing_
 - _TODO networking on Windows_
-- _TODO Service ClusterIP allocation_
-- _TODO Service Internal Traffic Policy_
+- [Service ClusterIP allocation](k8s-service-cluster-ip-alloc)
+- [Service internal traffic policy](k8s-service-internal-traffic-policy)
 
 ## Entities
 
