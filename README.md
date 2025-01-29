@@ -60,6 +60,10 @@ See Avril Lavigne "Complicated".
 - [EndpointSlice](k8s-endpoint-slice)
 - [NetworkPolicies](https://kubernetes.io/docs/concepts/services-networking/network-policies/) (TODO when needed)
 
+## Storage
+
+TODO
+
 ## Setup
 
 - install kubernetes
