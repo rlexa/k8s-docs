@@ -112,3 +112,7 @@ TODO
   - on cloud it would get an IP
 - clean up service: `kubectl delete service hello-node`
 - clean up deployment: `kubectl delete deployment hello-node`
+
+## Real world experiments
+
+- [Timeseries topology](k8s-example-timeseries-topology)
