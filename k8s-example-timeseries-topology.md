@@ -1019,10 +1019,562 @@ curl -X POST "https://keycloak.example.com/realms/myrealm/protocol/openid-connec
      -d "grant_type=password"
 ```
 
-# TODO
+### OAuth2 PKCE (Proof Key for Code Exchange) flow in the Angular frontend
 
-- next: Need Helm charts for easy deployment?
-- next: Want OAuth2 login for Angular SPA (PKCE Flow)?
-- next: add secrets management?
-- question: so NodeJS api does not have to be started in HTTP itself, endpoint proxy makes HTTPS instead?
-- question: Keycloak vs. others?
+- secure authentication without storing client secrets
+- better security against authorization code interception
+- seamless login flow for SPAs
+
+1. configure OAuth2 provider for PKCE
+2. install & configure Angular OAuth2
+3. implement login flow in Angular
+4. protect routes & handle tokens
+5. test the authentication flow
+
+#### Configure OAuth2 Provider for PKCE
+
+- Keycloak
+  - go to Keycloak admin panel - clients
+  - select your frontend client (e.g., angular-client)
+  - update these settings:
+    - Access Type: public
+    - Valid Redirect URIs: http://localhost:4200/\*
+    - Web Origins: http://localhost:4200
+    - OAuth 2.0 Flow: Authorization Code
+    - Proof Key for Code Exchange (PKCE): Enabled
+  - now Keycloak supports PKCE authentication for Angular
+
+#### Add Angular OAuth2 Library
+
+- install `npm install angular-oauth2-oidc`
+- add `auth.config.ts` file
+
+```typescript
+import { AuthConfig } from "angular-oauth2-oidc";
+
+export const authConfig: AuthConfig = {
+  issuer: "https://keycloak.example.com/realms/myrealm",
+  clientId: "angular-client",
+  redirectUri: window.location.origin,
+  responseType: "code",
+  scope: "openid profile email",
+  showDebugInformation: true,
+  strictDiscoveryDocumentValidation: false,
+  useSilentRefresh: true,
+  oidc: true,
+  requireHttps: true, // Set to false if using localhost
+  disablePKCE: false, // Enable PKCE Flow
+};
+```
+
+#### Implement Login Flow
+
+- example for old app.module.ts
+- and app.component.ts
+
+```typescript
+import { NgModule } from "@angular/core";
+import { BrowserModule } from "@angular/platform-browser";
+import { AppComponent } from "./app.component";
+import { OAuthModule } from "angular-oauth2-oidc";
+
+@NgModule({
+  declarations: [AppComponent],
+  imports: [
+    BrowserModule,
+    OAuthModule.forRoot(), // Import OAuth2 module
+  ],
+  providers: [],
+  bootstrap: [AppComponent],
+})
+export class AppModule {}
+```
+
+```typescript
+import { Component, OnInit } from "@angular/core";
+import { OAuthService } from "angular-oauth2-oidc";
+import { authConfig } from "./auth.config";
+
+@Component({
+  selector: "app-root",
+  templateUrl: "./app.component.html",
+  styleUrls: ["./app.component.css"],
+})
+export class AppComponent implements OnInit {
+  constructor(private oauthService: OAuthService) {}
+
+  ngOnInit(): void {
+    this.configureAuth();
+  }
+
+  configureAuth() {
+    this.oauthService.configure(authConfig);
+    this.oauthService.loadDiscoveryDocumentAndTryLogin();
+  }
+
+  login() {
+    this.oauthService.initLoginFlow();
+  }
+
+  logout() {
+    this.oauthService.logOut();
+  }
+
+  get isLoggedIn(): boolean {
+    return this.oauthService.hasValidAccessToken();
+  }
+
+  get userProfile(): any {
+    return this.oauthService.getIdentityClaims();
+  }
+}
+```
+
+#### Protect Routes & Handle Tokens
+
+- example for old `app-routing.module.ts`
+- and for `auth.guard.ts`
+
+```typescript
+import { NgModule } from "@angular/core";
+import { RouterModule, Routes } from "@angular/router";
+import { AuthGuard } from "./auth.guard";
+import { DashboardComponent } from "./dashboard/dashboard.component";
+import { LoginComponent } from "./login/login.component";
+
+const routes: Routes = [
+  { path: "login", component: LoginComponent },
+  {
+    path: "dashboard",
+    component: DashboardComponent,
+    canActivate: [AuthGuard],
+  },
+  { path: "", redirectTo: "/dashboard", pathMatch: "full" },
+];
+
+@NgModule({
+  imports: [RouterModule.forRoot(routes)],
+  exports: [RouterModule],
+})
+export class AppRoutingModule {}
+```
+
+```typescript
+import { Injectable } from "@angular/core";
+import { CanActivate, Router } from "@angular/router";
+import { OAuthService } from "angular-oauth2-oidc";
+
+@Injectable({ providedIn: "root" })
+export class AuthGuard implements CanActivate {
+  constructor(private oauthService: OAuthService, private router: Router) {}
+
+  canActivate(): boolean {
+    if (!this.oauthService.hasValidAccessToken()) {
+      this.router.navigate(["/login"]);
+      return false;
+    }
+    return true;
+  }
+}
+```
+
+#### Test Auth Flow
+
+- start Keycloak, API, Angular
+- open `http://localhost:4200`
+- click login - redirects to Keycloak
+- authenticate with your credentials
+- redirects back to Angular with an access token
+- API calls now include `Authorization: Bearer <JWT_TOKEN>`
+
+### Secrets Management
+
+- secure sensitive information (client secrets, DB credentials, API keys) using Kubernetes Secrets
+- integrate it with OAuth2, InfluxDB, Microservices
+
+1. Use Kubernetes secrets for storing sensitive data
+2. Mount secrets into deployments (OAuth2 Proxy, API, InfluxDB, etc.)
+3. (Optional) Use external secret managers (e.g., HashiCorp Vault, AWS Secrets Manager)
+
+#### Create Kubernetes Secrets
+
+- add yaml
+- convert to Base64
+- apply for example with `kubectl apply -f app-secrets.yaml`
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+type: Opaque
+data:
+  OAUTH2_CLIENT_ID: bXktY2xpZW50LWlk # Base64 encoded
+  OAUTH2_CLIENT_SECRET: c2VjcmV0LXZhbHVl # Base64 encoded
+  INFLUXDB_USERNAME: aW5mbHV4dXNlcg== # Base64 encoded
+  INFLUXDB_PASSWORD: c2VjcmV0cGFzc3dvcmQ= # Base64 encoded
+  JWT_PUBLIC_KEY: LS0tLS1CRUdJTiBQUk... # Base64 encoded JWT Public Key
+```
+
+```sh
+echo -n 'my-client-id' | base64
+echo -n 'secret-value' | base64
+```
+
+### Mount Secrets into Deployments
+
+- modify OAuth2 Proxy, API, and InfluxDB Deployments to use secrets
+
+```yaml
+# OAuth2 Proxy Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+spec:
+  template:
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: OAUTH2_CLIENT_ID
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: OAUTH2_CLIENT_SECRET
+
+---
+# Node.js API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: api-service
+          image: my-node-api
+          env:
+            - name: INFLUXDB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INFLUXDB_USERNAME
+            - name: INFLUXDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INFLUXDB_PASSWORD
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_PUBLIC_KEY
+
+---
+#InfluxDB Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: influxdb
+spec:
+  template:
+    spec:
+      containers:
+        - name: influxdb
+          image: influxdb
+          env:
+            - name: INFLUXDB_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INFLUXDB_USERNAME
+            - name: INFLUXDB_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INFLUXDB_PASSWORD
+```
+
+#### Use External Secret Managers (Optional)
+
+- more secure approach instead of Kubernetes Secrets e.e. HashiCorp Vault
+- install Vault into Kubernetes
+  - `helm repo add hashicorp https://helm.releases.hashicorp.com`
+  - `helm install vault hashicorp/vault`
+- store a secret in Vault
+  - `vault kv put secret/api OAUTH2_CLIENT_ID="my-client-id"`
+- deploy Vault Agent Injector to automatically inject secrets into Pods
+
+### Add Helm Charts for Easy Deployment
+
+- Helm packages Kubernetes yamls into charts making deployment easy and maintainable
+
+1. install Helm
+2. create a Helm chart
+3. template secrets, ConfigMaps, and Deployments
+4. deploy with Helm
+5. upgrade, rollback, and manage releases
+
+#### Install Helm
+
+- `curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash`
+- verify by `helm version`
+
+#### Create a Helm Chart
+
+- navigate to your project directory and create a Helm chart
+  - `helm create myapp`
+  - `cd myapp`
+  - results in following structure
+
+```bash
+myapp/
+  ├── charts/               # (For dependencies)
+  ├── templates/            # (YAML templates for Kubernetes resources)
+  │   ├── deployment.yaml   # (API, OAuth2 Proxy, etc.)
+  │   ├── service.yaml      # (Service definitions)
+  │   ├── ingress.yaml      # (Gateway/Ingress)
+  │   ├── secret.yaml       # (Kubernetes Secrets)
+  ├── values.yaml           # (Default values for templates)
+  ├── Chart.yaml            # (Chart metadata)
+```
+
+#### Template Secrets, ConfigMaps, and Deployments
+
+- `values.yaml` file for environment-specific values
+
+```yaml
+replicaCount: 1
+
+image:
+  api: my-node-api:latest
+  oauth2Proxy: quay.io/oauth2-proxy/oauth2-proxy:latest
+  influxdb: influxdb:latest
+
+service:
+  api:
+    port: 3000
+  influxdb:
+    port: 8086
+
+oauth2:
+  clientID: "my-client-id"
+  clientSecret: "my-client-secret"
+
+influxdb:
+  username: "influxuser"
+  password: "influxpassword"
+
+jwt:
+  publicKey: "LS0tLS1CRUdJTiBQUk..."
+```
+
+- secret template `templates/secret.yaml` file dynamically inject secrets from `values.yaml`
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+type: Opaque
+data:
+  # {{ }} <-- should be formatted like this actually
+  OAUTH2_CLIENT_ID: { { .Values.oauth2.clientID | b64enc } }
+  OAUTH2_CLIENT_SECRET: { { .Values.oauth2.clientSecret | b64enc } }
+  INFLUXDB_USERNAME: { { .Values.influxdb.username | b64enc } }
+  INFLUXDB_PASSWORD: { { .Values.influxdb.password | b64enc } }
+  JWT_PUBLIC_KEY: { { .Values.jwt.publicKey | b64enc } }
+```
+
+- deployment template `templates/deployment.yaml` for modifying
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service
+spec:
+  # {{ }} <-- should be formatted like this actually
+  replicas: { { .Values.replicaCount } }
+  template:
+    spec:
+      containers:
+        - name: api-service
+          image: "{{ .Values.image.api }}"
+          env:
+            - name: INFLUXDB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INFLUXDB_USERNAME
+            - name: INFLUXDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INFLUXDB_PASSWORD
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_PUBLIC_KEY
+```
+
+- service template `templates/service.yaml`
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  type: ClusterIP
+  ports:
+    # {{ }} <-- should be formatted like this actually
+    - port: { { .Values.service.api.port } }
+      targetPort: 3000
+  selector:
+    app: api-service
+```
+
+- Gateway/Ingress template `templates/ingress.yaml`
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: app-gateway
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        certificateRefs:
+          - name: tls-secret
+      routes:
+        - name: api-route
+          match:
+            path: /api
+          backend:
+            service:
+              name: api-service
+              port: 3000
+```
+
+#### Deploy with Helm
+
+- `helm install myapp ./myapp`
+- check with `kubectl get pods`
+
+#### Upgrade, Rollback, and Manage Releases
+
+- after changing `values.yaml` do `helm upgrade myapp ./myapp`
+- rollback to previous with `helm rollback myapp 1`
+- uninstall chart with `helm uninstall myapp`
+
+### Multi-Environment Helm Values
+
+- dev, staging, production deployments
+- customize configurations per environment
+
+1. create separate values.yaml file per env
+2. deploy with Helm using `--values` flag
+
+#### Create Environment-Specific Values Files
+
+- `values-dev.yaml`
+- `values-staging.yaml`
+- `values-prod.yaml`
+
+```yaml
+replicaCount: 1
+
+image:
+  api: my-node-api:latest
+  oauth2Proxy: quay.io/oauth2-proxy/oauth2-proxy:latest
+  influxdb: influxdb:latest
+
+service:
+  api:
+    port: 3000
+  influxdb:
+    port: 8086
+
+oauth2:
+  clientID: "dev-client-id"
+  clientSecret: "dev-secret"
+
+influxdb:
+  username: "devuser"
+  password: "devpassword"
+
+jwt:
+  publicKey: "LS0tLS1CRUdJTiBQUk..." # Development JWT public key
+```
+
+```yaml
+replicaCount: 2
+
+image:
+  api: my-node-api:staging
+  oauth2Proxy: quay.io/oauth2-proxy/oauth2-proxy:latest
+  influxdb: influxdb:staging
+
+service:
+  api:
+    port: 3000
+  influxdb:
+    port: 8086
+
+oauth2:
+  clientID: "staging-client-id"
+  clientSecret: "staging-secret"
+
+influxdb:
+  username: "staginguser"
+  password: "stagingpassword"
+
+jwt:
+  publicKey: "LS0tLS1CRUdJTiBQUk..." # Staging JWT public key
+```
+
+```yaml
+replicaCount: 3
+
+image:
+  api: my-node-api:prod
+  oauth2Proxy: quay.io/oauth2-proxy/oauth2-proxy:latest
+  influxdb: influxdb:prod
+
+service:
+  api:
+    port: 3000
+  influxdb:
+    port: 8086
+
+oauth2:
+  clientID: "prod-client-id"
+  clientSecret: "prod-secret"
+
+influxdb:
+  username: "produser"
+  password: "prodpassword"
+
+jwt:
+  publicKey: "LS0tLS1CRUdJTiBQUk..." # Production JWT public key
+```
+
+#### Deploy Using Helm with `--values` Flag
+
+- `helm install myapp-dev ./myapp -f values-dev.yaml`
+- `helm install myapp-staging ./myapp -f values-staging.yaml`
+- `helm install myapp-prod ./myapp -f values-prod.yaml`
