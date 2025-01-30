@@ -62,7 +62,28 @@ See Avril Lavigne "Complicated".
 
 ## Storage
 
-TODO
+- `Volume`s provide a way for containers to access and share data via filesystem
+- data sharing between different local processes within a container, or between different containers, or between Pods
+- purposes:
+  - populating a configuration file based on a `ConfigMap` or a `Secret`
+  - providing temporary scratch space for a pod
+  - sharing a filesystem between two different containers in the same pod
+  - sharing a filesystem between two different pods (even if those pods run on different nodes)
+  - storing data so that it stays available even if the Pod restarts or is replaced
+  - passing configuration information to an app running in a container, based on details of the Pod the container is in
+    - e.g. telling a sidecar container what namespace the Pod is running in
+  - providing read-only access to data in a different container image
+- e.g. data persistence
+  - on-disk files in a container are ephemeral
+  - problem: container crashes or is stopped, state is not saved and is lost
+    - during a crash, kubelet restarts the container with a clean state
+- e.g. shared storage
+
+  - problem: multiple containers in a pod need to share files
+
+### Storage Details
+
+- [Volumes](k8s-volumes)
 
 ## Setup
 
