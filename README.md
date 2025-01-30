@@ -85,6 +85,60 @@ See Avril Lavigne "Complicated".
 
 - [Volumes](k8s-volumes)
 
+## Configuration
+
+### Best Practice
+
+- when defining configurations specify the latest stable API version
+- store cfg files in version control before being pushing to cluster
+- use YAML rather than JSON
+- group related objects in single file whenever it makes sense
+  - [guestbook example](https://github.com/kubernetes/examples/blob/master/guestbook/all-in-one/guestbook-all-in-one.yaml)
+- `kubectl` commands can be called on a directory (e.g. apply whole directory)
+- don't set default values (zero configuration)
+- put object descriptions in annotations
+
+#### Pod
+
+- don't use naked pods (use ReplicaSet or Deployment)
+  - won't be rescheduled in the event of a node failure
+
+#### Service
+
+- create services before corresponding workloads and before dependant workloads
+  - k8s starts container and provides envvars for currently running services
+  - e.g. service `foo` exists:
+    - `FOO_SERVICE_HOST=<the host the Service is running on>`
+    - `FOO_SERVICE_PORT=<the port the Service is running on>`
+  - fyi: DNS does not have this restriction
+- DNS server plugin is optional but strongly recommended
+- don't specify pod `hostPort` nor `hostNetwork` when possible
+  - for debugging purposes instead use the `apiserver proxy` or `kubectl port-forward`
+  - for explicitly exposing a pod port on the node use `NodePort` Service
+- use headless services (which have a ClusterIP `None`) for service discovery when you don't need kube-proxy load balancing
+
+#### Labels
+
+- use semantic labels for application or Deployment
+  - e.g. `{ app.kubernetes.io/name: MyApp, tier: frontend, phase: test, deployment: v3 }`
+  - use these labels to select correct pods for other resources
+    - e.g. service selects `tier: frontend` pods
+    - e.g. service selects `phase: test` components of `app.kubernetes.io/name: MyApp`
+- use Kubernetes common labels for common use cases
+  - allows tools, including `kubectl` and dashboard, to work in an interoperable way
+- manipulate labels for debugging with `kubectl label`
+  - remove relevant labels from pod, it's controller will create new pod (???)
+    - useful for debugging previously live pod in quarantine
+
+#### Using `kubectl`
+
+- use `kubectl apply -f <directory>` which looks for all k8s .yaml, .yml, and .json files
+- use label selectors for `get` and `delete` instead of object names
+- use `kubectl create deployment` and `kubectl expose` to quickly create single-container env
+  - e.g. for a service then to access an application in a cluster
+
+### [TODO continue...](https://kubernetes.io/docs/concepts/configuration/configmap/)
+
 ## Setup
 
 - install kubernetes
