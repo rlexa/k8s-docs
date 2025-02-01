@@ -2,6 +2,8 @@
 
 [back](README#real-world-experiments)
 
+_CAUTION: ALL OF THIS IS CHATGPT SO..._
+
 - case
   - timeseries data from real world is published to a queue
   - a microservice consumes queue and writes into a timeseries DB
@@ -28,239 +30,31 @@
 
 ### `InfluxDB`
 
-- `PersistentVolume` for DB (persistent storage)
-- `StatefulSet` for DB pods
-- `Service` for internal communication
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: influxdb-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: influxdb
-spec:
-  serviceName: "influxdb"
-  replicas: 1
-  selector:
-    matchLabels:
-      app: influxdb
-  template:
-    metadata:
-      labels:
-        app: influxdb
-    spec:
-      containers:
-        - name: influxdb
-          image: influxdb:latest
-          ports:
-            - containerPort: 8086
-          volumeMounts:
-            - name: influxdb-storage
-              mountPath: /var/lib/influxdb
-  volumeClaimTemplates:
-    - metadata:
-        name: influxdb-storage
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 10Gi
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: influxdb
-spec:
-  selector:
-    app: influxdb
-  ports:
-    - protocol: TCP
-      port: 8086
-      targetPort: 8086
-  type: ClusterIP
-```
+- `PersistentVolume` for DB (persistent storage) [see here](example-timeseries-topology/influxdb.persistent-volume-claim.yaml)
+- `StatefulSet` for DB pods [see here](example-timeseries-topology/influxdb.stateful-state.yaml)
+- `Service` for internal communication [see here](example-timeseries-topology/influxdb.service.yaml)
 
 ### `RabbitMQ`
 
-- `StatefulSet` for persistence
-- `Service` for internal communication
-
-```yaml
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: rabbitmq
-spec:
-  serviceName: "rabbitmq"
-  replicas: 1
-  selector:
-    matchLabels:
-      app: rabbitmq
-  template:
-    metadata:
-      labels:
-        app: rabbitmq
-    spec:
-      containers:
-        - name: rabbitmq
-          image: rabbitmq:management
-          ports:
-            - containerPort: 5672 # AMQP protocol
-            - containerPort: 15672 # Management UI
-          env:
-            - name: RABBITMQ_DEFAULT_USER
-              value: "guest"
-            - name: RABBITMQ_DEFAULT_PASS
-              value: "guest"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: rabbitmq
-spec:
-  selector:
-    app: rabbitmq
-  ports:
-    - protocol: TCP
-      port: 5672
-      targetPort: 5672
-    - protocol: TCP
-      port: 15672
-      targetPort: 15672
-  type: ClusterIP
-```
+- `StatefulSet` for persistence [see here](example-timeseries-topology/rabbitmq.stateful-state.yaml)
+- `Service` for internal communication [see here](example-timeseries-topology/rabbitmq.service.yaml)
 
 ### `NodeJS` queue consumer worker
 
-- stateless deployment
+- stateless deployment [see here](example-timeseries-topology/queue-consumer.deployment.yaml)
 - consumes messages from `RabbitMQ`
 - writes parsed data into `InfluxDB`
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: queue-consumer
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: queue-consumer
-  template:
-    metadata:
-      labels:
-        app: queue-consumer
-    spec:
-      containers:
-        - name: queue-consumer
-          image: myrepo/queue-consumer:latest
-          env:
-            - name: RABBITMQ_URL
-              value: "amqp://rabbitmq:5672"
-            - name: INFLUXDB_URL
-              value: "http://influxdb:8086"
-```
-
 ### `NodeJS` API service
 
-- stateless deployment
-- exposes REST API for frontend
+- stateless deployment [see here](example-timeseries-topology/api-service.deployment.yaml)
+- exposes REST API for frontend [see here](example-timeseries-topology/api-service.service.yaml)
 - uses OAuth2
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: api-service
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: api-service
-  template:
-    metadata:
-      labels:
-        app: api-service
-    spec:
-      containers:
-        - name: api-service
-          image: myrepo/api-service:latest
-          ports:
-            - containerPort: 3000
-          env:
-            - name: INFLUXDB_URL
-              value: "http://influxdb:8086"
-            - name: OAUTH2_PROVIDER_URL
-              value: "https://auth.example.com"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: api-service
-spec:
-  selector:
-    app: api-service
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 3000
-  type: ClusterIP
-```
 
 ### `SPA` Angular frontend
 
-- served via `Nginx`
-- exposed via `LoadBalancer`
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: frontend
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: frontend
-  template:
-    metadata:
-      labels:
-        app: frontend
-    spec:
-      containers:
-        - name: frontend
-          image: myrepo/frontend:latest
-          ports:
-            - containerPort: 80
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: frontend
-spec:
-  selector:
-    app: frontend
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
-  type: LoadBalancer
-```
+- served via `Nginx` [see here](example-timeseries-topology/frontend.deployment.yaml)
+- exposed via `LoadBalancer` [see here](example-timeseries-topology/frontend.service.yaml)
 
 ### `OAuth2`
 
