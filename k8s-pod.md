@@ -111,13 +111,6 @@ spec:
   - most pods are managed by e.g. Deployment here it's directly `kubelet`
 - main use is self-hosted control pane (???)
 
-## Container probes
-
-- probe: periodic diagnostic by `kubelet` on a container
-  - ExecAction: via container runtime
-  - TCPSocketAction: directly by kubelet
-  - HTTPGetAction: directly by kubelet
-
 ## Pod lifecycle
 
 - pod lifecycle progress
@@ -136,12 +129,16 @@ spec:
   - assigned UID
   - scheduled to run on nodes where they remain until termination/deletion
 - node death: pods run or scheduled on it are marked for deletion
+- pod readiness can be extended by `spec.redinessGates` (see elsewhere)
 
 ### Pod container problem handling
 
-- fyi: `spec.restartPolicy` determines handling
+- `spec.restartPolicy` determines handling
+  - `Always` auto-restarts after any termination
+  - `OnFailure` restarts after termination with !0 exist-code
+  - `Never` does not restart
 - first crash: leads to immediate restart based on policy
-- repeated crashes: k8s applies exponential backoff delay based on policy
+- repeated crashes: k8s applies exponential backoff delay based on policy (up to 5min)
 - `CrashLoopBackOff` state: means backoff delay currently in effect
 - backoff reset: container runs for a time e.g. 10min and k8s resets backoff
   - i.e. next crash will be a first crash again
@@ -154,4 +151,48 @@ spec:
 - check resource limits i.e. raise CPU and memory allocated
 - debug application i.e. run container image locally or in a dev environment
 
-TODO https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy
+### Container probes
+
+- probe: periodic diagnostic by `kubelet` on a container
+  - ExecAction: via container runtime
+  - TCPSocketAction: directly by kubelet
+  - HTTPGetAction: directly by kubelet
+- check mechanisms
+  - `exec` command, OK when returns 0
+    - can be bad for performance see `initialDelaySeconds`, `periodSeconds`
+  - `grpc` call, OK when returns status `SERVING`
+  - `httpGet` on pod IP on specified path and port, OK when returns 200 or below 400
+  - `tcpSocket` on pod IP and port, OK if port open
+- probe type
+  - `livenessProbe` whether container running
+    - none means `Success`
+    - on fail will go to restart
+    - fyi: not needed if process crashes itself when issues arise
+  - `readinessProbe` whether container ready to respond to requests
+    - none means `Success`
+    - default state is `Failure` while init delay is active
+    - on fail will be removed from endpoints of services
+    - fyi: needed when want to delay networkt traffic until really ready
+    - fyi: needed when container should be able to become inactive for maintenance
+    - fyi: needed when container depends on other backends
+      - i.e. self is live but dependencies not yet
+    - fyi: needed when relying on loading or preparing large data or similar
+  - `startupProbe` whether application in container started
+    - none means `Success`
+    - other probes are disabled if this provided until this succeeds
+    - on fail will go to restart
+
+### Pod termination
+
+- important to allow processes to be terminated gracefully (rather than `KILL` signal)
+- i.e. should react to `TERM`/`SIGTERM` signal (with a grace period then `KILL`)
+
+### Pod garbage collection
+
+- failed pods' objects stay until human or controller explicitly removes them
+- PodGC removes terminated pods when threshold gets exceeded or when:
+  - pods are orphaned i.e. node doesn't exist anymore
+  - unsceduled terminating pods (???)
+  - pods bound to non-ready node tainted by `node.kubernetes.io/out-of-service`
+
+### TODO https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
