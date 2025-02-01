@@ -21,6 +21,33 @@ See Avril Lavigne "Complicated".
 - `Deployment`: checks pod health, re-starts/terminates
 - `Node`: a virtual or physical machine running the pods
 
+#### Workload
+
+- workload is a k8s app running in a set of pods
+- pod has a lifecycle
+  - e.g. a pod critical failure kills all pods in a node
+    - i.e. critical failure level is final, new pod needs to be created now
+- to make lifecycle control easier pods are not managed directly, instead use workload resources
+  - a workload resource configures a controller which ensures:
+    - right number of right kind of pods are running to match the defined state
+- built-in workload resources
+  - `Deployment` and `ReplicaSet`
+    - for managing a stateless app workload i.e. pods are interchangeable
+  - `StatefulSet`
+    - for pods that track state
+      - e.g. recording persistent data means: `StatefulSet` matching each pod with a `PersistentVolume`
+      - the code running in these pods can replicate data to other pods in the same set
+  - `DaemonSet`
+    - for pods providing node-local something
+    - every time a node is added matching a `DaemonSet` the control plane schedules a pod for that `DaemonSet` onto the new node
+    - each pod in a `DaemonSet` performs a job similar to a system daemon on a classic Unix / POSIX server
+      - e.g. plugin to run cluster networking, helping manage the node etc.
+  - `Job` and `CronJob`
+    - for tasks running to completion and then stop (once with a `Job` or regular with `CronJob`)
+- fyi there are 3rd party resources available
+- see details for
+  - [pods](k8s-pod.md)
+
 ### Network concept
 
 - IP per pod-in-cluster
