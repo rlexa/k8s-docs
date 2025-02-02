@@ -2,6 +2,8 @@
 
 Orchestration framework.
 
+[See non-obvious interesting stuff here.](INTERESTING)
+
 ## Concept
 
 See Avril Lavigne "Complicated".

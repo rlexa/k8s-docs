@@ -195,4 +195,206 @@ spec:
   - unsceduled terminating pods (???)
   - pods bound to non-ready node tainted by `node.kubernetes.io/out-of-service`
 
-### TODO https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+### Init containers
+
+- `initContainers`: pod can have a set of init containers
+  - status is returnes in `.status.initContainerStatuses`
+  - e.g. utils or setups which are not in an app image
+- init container
+  - always runs to completion during pod init
+  - each must complete successfully before next starts
+  - failures are treated according to `restartPolicy`
+    - on `Never` and init container failure whole pod is a fail
+- init containers are the same as normal containers, but:
+  - resource limits and requests are handled differently
+  - no `lifecycle`, `livenessProbe`, `readinessProbe`, `startupProbe` fields
+    - because must run to completion anyway, sequentially
+- advantages
+  - no need to make an image `FROM` another image just to use a tool
+    - e.g. `sed`, `awk`, `python`, or `dig` during setup
+  - app image builder and deployer roles work separation
+    - no need to build a single app image
+  - can have different filesystem view i.e. secrets from app containers
+  - init sequence means safe pre-conditions met before rest is started
+  - more security by moving privileged access only to init containers for setup
+- examples
+  - wait for a `Service` by shell command
+    - `for i in {1..100}; do sleep 1; if nslookup myservice; then exit 0; fi; done; exit 1`
+  - register pod with a remote server from the downward API with a command
+    - `curl -X POST http://$MANAGEMENT_SERVICE_HOST:$MANAGEMENT_SERVICE_PORT/register -d 'instance=$(<POD_NAME>)&ip=$(<POD_IP>)'`
+  - wait before starting the app container with a command
+    - `sleep 60`
+  - clone a Git repository into a `Volume`
+  - place values into cfg file
+    - then run a template tool to dynamically generate cfg file for app containers
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app.kubernetes.io/name: MyApp
+spec:
+  containers:
+    - name: myapp-container
+      image: busybox:1.28
+      command: ["sh", "-c", "echo The app is running! && sleep 3600"]
+  initContainers:
+    - name: init-myservice
+      image: busybox:1.28
+      command:
+        [
+          "sh",
+          "-c",
+          "until nslookup myservice.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done",
+        ]
+    - name: init-mydb
+      image: busybox:1.28
+      command:
+        [
+          "sh",
+          "-c",
+          "until nslookup mydb.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mydb; sleep 2; done",
+        ]
+```
+
+- ...
+  - simple pod with two `initContainers`
+  - first waits for `myservice`
+  - second waits for `mydb`
+  - then pod runs app container from `containers`
+  - test with `kubectl apply -f myapp.yaml`
+    - output e.g.: `pod/myapp-pod created`
+  - check immediately with `kubectl get -f myapp.yaml`
+    - output among other things e.g. `STATUS: Init:0/2`
+  - or check with details: `kubectl describe -f myapp.yaml`
+  - see logs
+    - `kubectl logs myapp-pod -c init-myservice`
+    - `kubectl logs myapp-pod -c init-mydb`
+  - init containers will be waiting to discover their services
+  - add the services to make them appear:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myservice
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 9376
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mydb
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 9377
+```
+
+- ...
+  - apply with `kubectl apply -f services.yaml`
+    - output: `service/myservice created` `service/mydb created`
+  - check with `kubectl get -f myapp.yaml`
+    - output among other things `STATUS: Running`
+
+### Sidecar containers
+
+- fyi: may have to enable `SidecarContainers` feature gate
+- sidecars are _regular init containers_ i.e. like rules inits but remain running
+  - can have probes
+  - i.e. just set `restartPolicy` to `Always` in `initContainers` to make one
+    - `readinessProbe` can be set, result will be `ready` state of pod
+  - share all the benefits of init containers e.g. ordering
+    - fyi: if sidecar starts successfully it's enough to start next init container
+- sidecars run along the main app containers within the same pod
+  - fyi: on pod termination app containers are stopped first, then sidecars
+  - have independent lifecycles from app containers
+    - i.e. update, scale, maintain sidecars without affecting the apps
+    - i.e. changing image of sidecar restarts container, not whole pod
+  - e.g. for logging, monitoring, security, data sync
+  - e.g. web application:
+    - local webserver is sidecar container
+    - web app itself is app container
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  labels:
+    app: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: alpine:latest
+          command:
+            [
+              "sh",
+              "-c",
+              'while true; do echo "logging" >> /opt/logs.txt; sleep 1; done',
+            ]
+          volumeMounts:
+            - name: data
+              mountPath: /opt
+      initContainers:
+        - name: logshipper
+          image: alpine:latest
+          restartPolicy: Always
+          command: ["sh", "-c", "tail -F /opt/logs.txt"]
+          volumeMounts:
+            - name: data
+              mountPath: /opt
+      volumes:
+        - name: data
+          emptyDir: {}
+```
+
+##### Jobs with sidecars
+
+- sidecar doesn't prevent `Job` from completing after app container is done (???)
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: myjob
+spec:
+  template:
+    spec:
+      containers:
+        - name: myjob
+          image: alpine:latest
+          command: ["sh", "-c", 'echo "logging" > /opt/logs.txt']
+          volumeMounts:
+            - name: data
+              mountPath: /opt
+      initContainers:
+        - name: logshipper
+          image: alpine:latest
+          restartPolicy: Always
+          command: ["sh", "-c", "tail -F /opt/logs.txt"]
+          volumeMounts:
+            - name: data
+              mountPath: /opt
+      restartPolicy: Never
+      volumes:
+        - name: data
+          emptyDir: {}
+```
+
+### Ephemeral containers
