@@ -398,3 +398,78 @@ spec:
 ```
 
 ### Ephemeral containers
+
+- temporarily running container e.g. for troubleshooting, inspection
+  - pod already running so most container fields disallowed
+    - e.g. ports, livenessProbe, readinessProbe not allowed
+    - e.g. setting resources
+- when to use: if `kubectl exec` not enough for troubleshooting
+  - fyi: use `shareProcessNamespace` to make that easier
+
+## User namespaces
+
+- namespace isolates user running in container from the one in host
+  - process-as-root in container can run as non-root user in the host
+    - i.e. fully privileged inside user namespace but not outside
+- _caution: this doc is for container runtimes using Linux namespaces for isolation_
+  - e.g. Docker Engine
+- user namespaces is a Linux feature to map container users to other users in host
+  - also pod user namespace capabilities are void outside of it
+- `pod.spec.hostUsers` set to `false` to opt-in in user namespaces
+  - kubelet picks host UIDs/GIDs a pod is mapped to
+  - `runAsUser`, `runAsGroup`, `fsGroup`, etc. in `pod.spec` refer to user in container
+- on creating a pod (default) several new namespaces are used for isolation
+  - network namespace to isolate the network of the container
+  - PID namespace to isolate the view of processes
+  - if user namespace is used this will isolate users in container from users in node
+    - i.e. containers can run as root and be mapped to a non-root user on host
+      - in container process thinks it's root
+        - `apt`, `yum` are ok to use
+      - in reality it is not e.g. check with `ps aux` from host
+        - `ps` shows user who is not same as user inside the container command
+- capabilities of pod are mostly void outside of pod e.g.
+  - `CAP_SYS_MODULE` limited to pod using user namespaces (can't load kernel modules)
+  - `CAP_SYS_ADMIN` limited to pod user namespace and invalid outside of it
+- **WARNING: without user namespace root container has root on node**
+  - i.e. in case of "container breakout" (???)
+- [see details](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/)
+
+## Downward API
+
+- downward api: two ways to expose pod and container fields to a running container
+  - as envvars
+  - as files that are populated by a special volume type
+- why: if container needs info about self or cluster without using Kubernetes clients
+- `fieldRef` volume allows passing pod-level info
+  - pod spec always defines at least one container
+  - `resourceFieldRef` allows passing container-level info
+- availabe via envvar and `fieldRef` api
+  - `metadata.name` pod name
+  - `metadata.namespace` pod namespace
+  - `metadata.uid` pod unique ID
+  - `metadata.annotations['KEY']` pod KEY annotation value
+  - `metadata.labels['KEY']` pod KEY label value
+- availabe via envvar (but not `fieldRef` api)
+  - `spec.serviceAccountName` pod service account
+  - `spec.nodeName` node name
+  - `status.hostIP` node primary IP
+  - `status.hostIPs` IP addresses (dual-stack version of `status.hostIP`)
+    - first is always same as `status.hostIP`
+  - `status.podIP` pod primary IP (usually IPv4)
+  - `status.podIPs` IP addresses (dual-stack version of `status.podIP`)
+    - first is always same as `status.podIP`
+- availabe via `fieldRef` api (but not envvar)
+  - `metadata.labels` all pod labels
+    - format: `label-key="escaped-value"`, token per line
+  - `metadata.annotations` all pod annotations
+    - format: `annotation-key="escaped-value"`, token per line
+- available via `resourceFieldRef` api (container-level info)
+  - `resource: limits.cpu`
+  - `resource: requests.cpu`
+  - `resource: limits.memory`
+  - `resource: requests.memory`
+  - `resource: limits.hugepages-*`
+  - `resource: requests.hugepages-*`
+  - `resource: limits.ephemeral-storage`
+  - `resource: requests.ephemeral-storage`
+  - fyi if not specified will still show default info values

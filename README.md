@@ -48,7 +48,8 @@ See Avril Lavigne "Complicated".
     - for tasks running to completion and then stop (once with a `Job` or regular with `CronJob`)
 - fyi there are 3rd party resources available
 - see details for
-  - [pods](k8s-pod.md)
+  - [Pod](k8s-pod)
+  - [Deployment/Replicaset](k8s-deployment-replicaset)
 
 ### Network concept
 
