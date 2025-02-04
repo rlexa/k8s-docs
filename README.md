@@ -50,6 +50,7 @@ See Avril Lavigne "Complicated".
 - see details for
   - [Pod](k8s-pod)
   - [Deployment/Replicaset](k8s-deployment-replicaset)
+  - [StatefulSet](k8s-stateful-set)
 
 ### Network concept
 
