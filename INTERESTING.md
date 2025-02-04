@@ -24,6 +24,8 @@
   - so a `Deployment` is controller entity, manages replicas of `Pod`s on `Node`s
 - `ReplicaSet`s maintain a stable number of pods
   - usually itself auto-managed by `Deployment`
+- `StatefulSet` are `Deployment`s with persistence
+  - can lead to failure state where manual termination of pods is required
 
 ## `kubectl` util
 
