@@ -52,6 +52,7 @@ See Avril Lavigne "Complicated".
   - [Deployment/Replicaset](k8s-deployment-replicaset)
   - [StatefulSet](k8s-stateful-set)
   - [DaemonSet](k8s-dameon-set)
+  - [Job](k8s-job)
 
 ### Network concept
 
