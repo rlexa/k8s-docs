@@ -175,4 +175,101 @@ spec:
 ## Success policy
 
 - needs `JobSuccessPolicy` feature gate
+- indexed job: use `.spec.successPolicy`, based on pods that succeed
+- default: job succeeds when `.spec.completions` count succeeds
+- alternative cases:
+  - simulations with different param might not need all of them to succeed
+  - leader-worker pattern (only leader success is enough) e.g. PyTorch
+- `.spec.successPolicy`
+  - policy can handle job success based succeeded pods
+  - with only `succeededIndexes`: all these indexes must succeed
+    - must be list of intervals between 0 and `.spec.completions-1`
+  - with only `succeededCount`: number of succeeded indexes for big success
+  - when both of above:
+    - succeeded indexes from subset of indexes in `succeededIndexes` reaches `succeededCount`
+- fyi: multiple rules in `.spec.successPolicy.rules` evaluated in order
+- fyi: `.spec.backoffLimit` and `.spec.podFailurePolicy` evaluated before success policies
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-success
+spec:
+  parallelism: 10
+  completions: 10
+  completionMode: Indexed # Required for the success policy
+  successPolicy:
+    rules:
+      - succeededIndexes: 0,2-3
+        succeededCount: 1
+  template:
+    spec:
+      containers:
+        - name: main
+          image: python
+          # Provided that at least one of the Pods with 0, 2, and 3 indexes has succeeded,
+          # the overall Job is a success.
+          command:
+            - python3
+            - -c
+            - |
+              import os, sys
+              if os.environ.get("JOB_COMPLETION_INDEX") == "2":
+                sys.exit(0)
+              else:
+                sys.exit(1)
+      restartPolicy: Never
+```
+
+- ...
+  - both `succeededIndexes` and `succeededCount` specified
+  - success when either specified indexes 0, 2, or 3 succeed
+  - on success: job `SuccessCriteriaMet` condition equals `SuccessPolicy`
+    - will terminate all rest pods and go to `Complete` condition
+
+## Termination and cleanup
+
+- job completes, pods not created anymore but usually also not deleted
+  - i.e. for checking logs and diagnostics, incl. job object itself
+  - i.e. user has to delete the pods manually
+    - `kubectl delete jobs/pi` or `kubectl delete -f ./job.yaml`
+      - this way pods are also deleted
+- default job completion process
+  - pod fails `restartPolicy=Never` or container exits in error `restartPolicy=OnFailure`
+  - job defers to `.spec.backoffLimit` process
+  - when `.spec.backoffLimit` reached job marked failed
+    - any running pods will be terminated
+- another alternative: active deadline
+  - set `.spec.activeDeadlineSeconds`
+    - applies to the duration of the job (not pods etc.)
+  - after deadline reached job fails with `type: Failed` and `DeadlineExceeded`
+  - fyi: `.spec.activeDeadlineSeconds` precedes `.spec.backoffLimit`
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi-with-timeout
+spec:
+  backoffLimit: 5
+  activeDeadlineSeconds: 100
+  template:
+    spec:
+      containers:
+        - name: pi
+          image: perl:5.34.0
+          command: ["perl", "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+      restartPolicy: Never
+```
+
+- ...
+  - fyi: both job and pod have `activeDeadlineSeconds`
+  - fyi: `restartPolicy` applies to pod, not job
+    - there is no auto job restart after `type: Failed`
+    - i.e. job termination after `.spec.activeDeadlineSeconds` and `.spec.backoffLimit` result in a permanent Job failure
+      - _warning: requires manual intervention to resolve_
+
+## Terminal job conditions
+
 - TODO
