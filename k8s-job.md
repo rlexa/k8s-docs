@@ -104,7 +104,7 @@ spec:
   - else with `restartPolicy = "OnFailure"` debugging is difficult as pod gets killed when backoff limit is reached
 - fyi: [see backoff limit per index details](https://kubernetes.io/docs/concepts/workloads/controllers/job/#backoff-limit-per-index)
 
-## Pod failure policy
+### Pod failure policy
 
 - `.spec.podFailurePolicy` enables cluster to handle pod failures
   - based on container exist codes
@@ -172,7 +172,7 @@ spec:
     - `FailIndex` avoid unnecessary retries within index of failed pod
       - needs backoff limit pre index settings
 
-## Success policy
+### Success policy
 
 - needs `JobSuccessPolicy` feature gate
 - indexed job: use `.spec.successPolicy`, based on pods that succeed
@@ -228,7 +228,7 @@ spec:
   - on success: job `SuccessCriteriaMet` condition equals `SuccessPolicy`
     - will terminate all rest pods and go to `Complete` condition
 
-## Termination and cleanup
+### Termination and cleanup
 
 - job completes, pods not created anymore but usually also not deleted
   - i.e. for checking logs and diagnostics, incl. job object itself
@@ -270,6 +270,154 @@ spec:
     - i.e. job termination after `.spec.activeDeadlineSeconds` and `.spec.backoffLimit` result in a permanent Job failure
       - _warning: requires manual intervention to resolve_
 
-## Terminal job conditions
+### Terminal job conditions
 
-- TODO
+- two terminal states/conditions
+  - `Complete`
+    - succeeded pods >= `.spec.completions`
+    - `.spec.successPolicy` criteria met
+  - `Failed`
+    - failed pods > `.spec.backoffLimit`
+    - job runtime > `.spec.activeDeadlineSeconds`
+    - indexed job with `.spec.backoffLimitPerIndex` has failed indexes.
+    - failed indexes in job > `spec.maxFailedIndexes`
+    - failed pod matches rule in `.spec.podFailurePolicy` with `FailJob`
+- terminal conditions usually only set after all pods terminated
+  - process
+    - job meets fail or success criteria
+    - set `FailureTarget` or `SuccessCriteriaMet` condition to job
+      - _fyi: can be used to determine ack/nak without waiting on terminal condition_
+        - e.g. for asap job replacement (but will start in parallel so think about resources)
+    - this triggers pod termination
+      - `terminationGracePeriodSeconds` can delay termination
+
+### Job auto clean up
+
+- jobs are usually not cleaned up (except if managed e.g. by `CronJob`)
+- `.spec.ttlSecondsAfterFinished` TTL controller alternative
+  - cascade deleted job i.e. pods etc. delted together with job
+  - unset means no auto-delete, 0 means immediate auto-delete
+- _recommended: do use TTL_
+  - reason: `orphanDependents` is default for unmanaged jobs
+    - unmanaged jobs are directly created jobs (i.e. not `CronJob`)
+    - i.e. pods will become orphans and stay in system
+      - eventually garbage collected, still can cause problems
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi-with-ttl
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    spec:
+      containers:
+        - name: pi
+          image: perl:5.34.0
+          command: ["perl", "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+      restartPolicy: Never
+```
+
+- ...
+  - job `pi-with-ttl` auto deleted 100s after finish
+
+## Job patterns
+
+- job object can process set of independent but related work items
+  - e.g. emails to send, frames to render, files to transcode, NoSQL DB keys ranges to scan
+  - consider this case a _batch job_
+  - _fyi: [see for examples](https://kubernetes.io/docs/concepts/workloads/controllers/job/#job-patterns)_
+- parallel computation patterns for batch jobs
+  - job-per-work-item vs. one job for all
+    - 1-per-1: creates overhead for user and system with a lot of job objects
+    - 1-for-all: A single job for all work items is better for large numbers of items
+  - pod-per-work-item vs. pod processes multiple work items
+    - 1-per-1: requires less modification to existing code and containers
+    - 1-for-some: better for large numbers of items
+  - work queue
+    - requires running queue service
+    - requires modifications to program or container to make it use the queue
+    - other approaches easier to adapt to existing containerised app
+  - job is associated with headless service
+    - can enable pods in gob to communicate with each other for collaboration
+
+| Pattern                                 | `.spec.completions` | `.spec.parallelism` |
+| --------------------------------------- | ------------------- | ------------------- |
+| Queue with Pod Per Work Item            | x                   | any                 |
+| Queue with Variable Pod Count           | null                | any                 |
+| Indexed Job with Static Work Assignment | x                   | any                 |
+| Job with Pod-to-Pod Communication       | x                   | x                   |
+| Job Template Expansion                  | 1                   | should be 1         |
+
+## Advanced usage
+
+### Job suspension
+
+- `.spec.suspend` (bool)
+  - can start jobs in suspended state or suspend while executing
+  - fyi: on resume `.status.startTime` will be reset to current time
+    - i.e. `.spec.activeDeadlineSeconds` will be will also be reset
+- on job suspend
+  - running non `Completed` pods are terminated with `SIGTERM` signal
+    - graceful termination period will be honored
+    - these pods won't increment `completions`
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: myjob
+spec:
+  suspend: true
+  parallelism: 1
+  completions: 5
+  template:
+    spec: ...
+```
+
+- ...
+  - job is defined as suspended
+    - check with `kubectl get job myjob -o yaml`
+  - suspend via e.g.
+    - `kubectl patch job/myjob --type=strategic --patch '{"spec":{"suspend":true}}'`
+  - resume via e.g.
+    - `kubectl patch job/myjob --type=strategic --patch '{"spec":{"suspend":false}}'`
+  - check with `kubectl get jobs/myjob -o yaml`
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+# .metadata and .spec omitted
+status:
+  conditions:
+    - lastProbeTime: "2021-02-05T13:14:33Z"
+      lastTransitionTime: "2021-02-05T13:14:33Z"
+      status: "True"
+      type: Suspended
+  startTime: "2021-02-05T13:13:48Z"
+```
+
+- ...
+  - type `Suspended` and status `True` means suspended
+  - `lastTransitionTime` here means for since when
+  - status `False` would mean was suspended but now running
+  - if such condition not there then job was never stopped
+  - can also check events `kubectl describe jobs/myjob`
+
+```
+Name:           myjob
+...
+Events:
+  Type    Reason            Age   From            Message
+  ----    ------            ----  ----            -------
+  Normal  SuccessfulCreate  12m   job-controller  Created pod: myjob-hlrpl
+  Normal  SuccessfulDelete  11m   job-controller  Deleted pod: myjob-hlrpl
+  Normal  Suspended         11m   job-controller  Job suspended
+  Normal  SuccessfulCreate  3s    job-controller  Created pod: myjob-jvb44
+  Normal  Resumed           3s    job-controller  Job resumed
+```
+
+- ...
+  - last 4 events caused by `.spec.suspend` toggling
+    - e.g. no pods were created but pod creation restarted asap on job resume
