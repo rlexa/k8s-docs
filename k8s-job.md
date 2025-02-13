@@ -421,3 +421,133 @@ Events:
 - ...
   - last 4 events caused by `.spec.suspend` toggling
     - e.g. no pods were created but pod creation restarted asap on job resume
+
+### Mutable scheduling directives
+
+- sometimes parallelism shoul happen on same /something/ unit (???)
+- fields in job pod template that can be updated are:
+  - node affinity, selector,
+  - tolerations
+  - labels, annotations
+  - scheduling gates
+
+### Specifying pod selector
+
+- `.spec.selector` is not needed normally
+  - system will pick a selector not overlapping with other jobs
+  - can be dangerous if non-unique selector is specified
+    - other controllers will match selector or wrong pods will be targeted
+- case: job `old` is running
+  - existing pods should keep running
+  - rest of pods it creates should use different template
+  - job should have a new name
+  - can't update job because these fields are not updatable
+  - so: delete job `old` but leave pods running
+    - `kubectl delete jobs/old --cascade=orphan`
+  - before deletion: note selector
+    - `kubectl get job old -o yaml`
+
+```yaml
+kind: Job
+metadata:
+  name: old
+  ...
+spec:
+  selector:
+    matchLabels:
+      batch.kubernetes.io/controller-uid: a8f3d00d-c6d2-11e5-9f87-42010af00002
+  ...
+```
+
+- ...
+  - above would be similar output of the get command
+  - now: create new job with same selector
+    - pods label: `batch.kubernetes.io/controller-uid=a8f3d00d-c6d2-11e5-9f87-42010af00002`
+    - specify `manualSelector: true` in new job
+
+```yaml
+kind: Job
+metadata:
+  name: new
+  ...
+spec:
+  manualSelector: true
+  selector:
+    matchLabels:
+      batch.kubernetes.io/controller-uid: a8f3d00d-c6d2-11e5-9f87-42010af00002
+  ...
+```
+
+- ...
+  - new job itself will have different uid from `...-42010af00002`
+
+### Job tracking with finalizers
+
+- controller tracks pods belonging to jobs and notices such pod removal from API
+  - how: creates pods with finalizer `batch.kubernetes.io/job-tracking`
+  - removes finalizer only after pod accounted for in job status
+
+### Elastic indexed jobs
+
+- scale indexed jobs by mutating `.spec.parallelism` and `.spec.completions`
+  - such that `.spec.parallelism == .spec.completions`
+- fyi: on scaling down pods with higher indexes are removed
+- cases: scaling batch workloads like PyTorch training jobs
+
+### Delayed creation of replacement pods
+
+- fyi: needs `JobPodReplacementPolicy` feature gate
+- controller recreates pods on fail or while terminating
+  - i.e. pods count can be greater than `parallelism` or per-index
+- `.spec.podReplacementPolicy: Failed` replace pods only on full termination
+- default replacement policy depends on whether job has `podFailurePolicy`
+  - if not set
+    - no `podReplacementPolicy` defaults to `TerminatingOrFailed`
+  - if set
+    - no `podReplacementPolicy` defaults to `Failed`
+- fyi: can check `.status.terminating` of job
+  - with `kubectl get jobs/myjob -o yaml`
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+# .metadata and .spec omitted
+status:
+  # three Pods are terminating and have not yet reached the Failed phase
+  terminating: 3
+```
+
+### Delegation of managed job objects to external controller
+
+- fyi: needs `JobManagedBy` feature gate
+- can disable built-in job controller for specific job
+  - delegate reconciliation of the job to external controller
+- `spec.managedBy` set to not `kubernetes.io/job-controller`
+  - make sure the value is an installed controller
+
+## Alternatives
+
+- bare pods
+  - on node reboot or fail pod is terminated and not restarted
+    - job would replace with new pods
+  - recommeded: use job even for single pod
+- replication controller
+  - manages pods not expected to terminate (e.g. web servers)
+    - job manages pods expected to terminate (e.g. batch tasks)
+    - i.e. jobs are complementary to replication controller
+  - job is only appropriate for:
+    - pods with `RestartPolicy` equal to `OnFailure` or `Never`
+      - fyi: default is `Always`
+- single job starts controller pod
+  - pattern: single job creates pod
+    - which creates other pods
+    - acting like a controller for those pods
+    - is flexible but complex and less integration with k8s
+  - example:
+    - job starts pod which runs a script
+    - script starts Spark master controller
+      - runs a spark driver
+      - then cleans up
+  - advantage:
+    - overall process gets completion guarantee of a job object
+    - maintains complete control over pod creation and collaboration
