@@ -52,7 +52,8 @@ See Avril Lavigne "Complicated".
   - [Deployment/Replicaset](k8s-deployment-replicaset)
   - [StatefulSet](k8s-stateful-set)
   - [DaemonSet](k8s-dameon-set)
-  - [Job](k8s-job)
+  - [Job/CronJob](k8s-job-cronjob)
+  - `ReplicationController` is obsolete (use `Deplyoment` and `ReplicaSet`)
 
 ### Network concept
 

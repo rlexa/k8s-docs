@@ -551,3 +551,95 @@ status:
   - advantage:
     - overall process gets completion guarantee of a job object
     - maintains complete control over pod creation and collaboration
+
+# K8S CronJob
+
+- creates jobs on repeating schedule written in `Cron` format
+  - e.g. for backups, report generation
+- one `CronJob` is like line of crontab (cron table) file in Unix
+- `.metadata.name` is part of auto-created jobs
+  - DNS label rules and **no more than 52 chars**
+    - because 11 chars will be auto-appended
+- `.spec`
+  - `.jobTemplate` (mandatory) job template (but nested)
+    - _warning: changing only affects new jobs_
+    - _warning: jobs must be idempotent_
+    - fyi: sets job annotation `batch.kubernetes.io/cronjob-scheduled-timestamp`
+      - originally scheduled creation time for the job in RFC3339
+  - `.startingDeadlineSeconds` skips that job instance if not started in that time
+    - over-deadline jobs treated as failed
+    - if not specified there won't be any deadline (can get dangerous)
+    - _warning: don't set under 10s as controller checks every 10s_
+      - i.e. could happen that job is never scheduled
+    - fyi: after too many missed schedule attempts (100) logs error
+  - `.concurrencyPolicy` for when jobs are croned in parallel
+    - `Allow` (default) doesn't matter
+    - `Forbid` skips new job if old is still running
+      - `.startingDeadlineSeconds` could mean that it's still started if inside deadline
+    - `Replace` new job replaces old job
+    - fyi: policy only targets jobs inside the same `CronJob`
+    - fyi: if `startingDeadlineSeconds` is large or unset (default) and `concurrencyPolicy=Allow`
+      - jobs will always run at least once
+  - `.suspend` can be toggled but won't stop running jobs
+    - _warning: all missed jobs will be started on untoggle without deadline!_
+  - `.successfulJobsHistoryLimit` default 3, keeps succeeded jobs
+  - `.failedJobsHistoryLimit` default 1, keeps failed jobs
+  - `.timeZone` [see zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) e.g. "Etc/UTC"
+    - defaults to local time zone of controller
+    - fyi: time zone database from Go standard library is included as fallback
+  - `.schedule` (mandatory) see below
+    - _warning: `CRON_TZ` or `TZ` nor supported_
+
+```
+# ┌───────────── minute (0 - 59)
+# │ ┌───────────── hour (0 - 23)
+# │ │ ┌───────────── day of the month (1 - 31)
+# │ │ │ ┌───────────── month (1 - 12)
+# │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday)
+# │ │ │ │ │                                   OR sun, mon, tue, wed, thu, fri, sat
+# │ │ │ │ │
+# │ │ │ │ │
+# * * * * *
+```
+
+- ...
+  - e.g. `0 3 * * 1` is "weekly on a Monday at 3 AM"
+  - fyi: includes "Vixie cron" step values [see here](https://www.freebsd.org/cgi/man.cgi?crontab%285%29)
+  - fyi: ? in schedule means \* i.e. any value for a given field
+  - [see generation web tools](https://crontab.guru/)
+  - fyi: also has macros
+
+| Entry                  | Description                                | Equivalent to |
+| ---------------------- | ------------------------------------------ | ------------- |
+| @yearly (or @annually) | once a year, midnight, 1 Jan               | 0 0 1 1 \*    |
+| @monthly               | once a month, midnight, first day of month | 0 0 1 \* \*   |
+| @weekly                | once a week, midnight, Sunday morning      | 0 0 \* \* 0   |
+| @daily (or @midnight)  | once a day, midnight                       | 0 0 \* \* \*  |
+| @hourly                | once an hour, beginning of hour            | 0 \* \* \* \* |
+
+- example:
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hello
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: hello
+              image: busybox:1.28
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - date; echo Hello from the Kubernetes cluster
+          restartPolicy: OnFailure
+```
+
+- ...
+  - prints current time and hello message every minute
