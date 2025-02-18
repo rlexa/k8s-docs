@@ -55,6 +55,78 @@ See Avril Lavigne "Complicated".
   - [Job/CronJob](k8s-job-cronjob)
   - `ReplicationController` is obsolete (use `Deplyoment` and `ReplicaSet`)
 
+##### Workload scaling
+
+- horizontal
+  - fyi: can be done manually with `kubectl` (changing replicaset number)
+  - `HorizontalPodAutoscaler` i.e. HPA auto-scales (native)
+  - `kubectl scale deployment/my-nginx --replicas=1`
+    - hard manual downscale to 1
+  - `kubectl autoscale deployment/my-nginx --min=1 --max=3`
+    - auto scale between in a range
+    - _warning: requires metrics (???)_
+- vertical
+  - fyi: can be done manually by patching the resource definition
+  - `VerticalPodAutoscaler` i.e. VPA auto-scales (not native)
+    - needs an installed "Metrics Server" (???)
+    - [see for more details](https://kubernetes.io/docs/concepts/workloads/autoscaling/#scaling-workloads-vertically)
+
+#### Workload management
+
+- app is deployed and exposed via service, now what?
+- fyi: can group resources in single yaml by using `---` separator
+  - can then be created by single apply command
+  - resources in yaml are created in order
+  - alternative: multiple "-f" file arguments for apply command
+- recommended: microservices in single yaml and all of app in same directory
+  - can then be created by single apply command on directory
+  - nested directories also possible by adding `--recursive` or `-R`
+- fyi: apply also works with url
+  - `kubectl apply -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml`
+- fyi: can also delete in bulk, not just apply
+  - e.g. by selector `kubectl delete deployment,services -l app=nginx`
+- fyi: chaining and filtering is possible
+  - `kubectl get $(kubectl create -f docs/concepts/cluster-administration/nginx/ -o name | grep service/ )`
+  - `kubectl create -f docs/concepts/cluster-administration/nginx/ -o name | grep service/ | xargs -i kubectl get '{}'`
+    - create resources under examples/application/nginx/
+    - prints resources created with `-o name` format (as resource/name)
+    - grep only the service
+    - print it with `kubectl get`
+- update app without outage e.g. with new image or tag
+  - use e.g. rollout to gradually shift, example:
+    - `kubectl create deployment my-nginx --image=nginx:1.14.2`
+      - output `deployment.apps/my-nginx created`
+    - ensure there is 1 replica
+      - `kubectl scale --replicas 1 deployments/my-nginx --subresource='scale' --type='merge' -p '{"spec":{"replicas": 1}}'`
+        - output `deployment.apps/my-nginx scaled`
+    - allow to add temp replicas on rollout (surge max 100%)
+      - `kubectl patch --type='merge' -p '{"spec":{"strategy":{"rollingUpdate":{"maxSurge": "100%" }}}}'`
+        - output `deployment.apps/my-nginx patched`
+    - update nginx
+      - `kubectl edit deployment/my-nginx`
+        - change `.spec.template.spec.containers[0].image` to `nginx:1.16.1`
+  - check with rollout command
+    - `kubectl apply -f my-deployment.yaml`
+    - `kubectl rollout status deployment/my-deployment --timeout 10m`
+      - waits for rollout to finish
+      - fyi: can just check status with `--watch=false`
+      - fyi: can also pause/resume/cancel rollout
+- update app cfg which must be replaced
+  - `kubectl replace -f https://k8s.io/examples/application/nginx/nginx-deployment.yaml --force`
+    - deletes then replaces
+- canary deployments e.g. for a/b releases
+  - for example use tags e.g.
+    - same: `labels.app: guestbook`, `labels.tier: frontend`
+    - then add track `.labels.track: stable` and `.labels.track: canary`
+      - with different images
+  - frontend service then omits track in `.selector`
+    - traffic now redirected to both apps
+  - now can test then update stable to canary's image and remove canary
+- attach annotations: arbitrary non-id metadata retrieved by API clients e.g. libs and tools
+  - `kubectl annotate pods my-nginx-v4-9gw19 description='my frontend running nginx'`
+  - `kubectl get pods my-nginx-v4-9gw19 -o yaml`
+    - output among other things: `.metadata.annotations.description: my frontend running nginx`
+
 ### Network concept
 
 - IP per pod-in-cluster
@@ -172,6 +244,14 @@ See Avril Lavigne "Complicated".
   - e.g. for a service then to access an application in a cluster
 
 ### [TODO continue...](https://kubernetes.io/docs/concepts/configuration/configmap/)
+
+## Tools
+
+- [see for more](https://landscape.cncf.io/guide#app-definition-and-development--application-definition-image-build)
+- Helm
+  - manages helm charts i.e. packages of pre-configured k8s resources
+- Kustomize
+  - traverses k8s manifest to add/remove/update cfg options
 
 ## Setup
 

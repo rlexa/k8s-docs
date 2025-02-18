@@ -34,6 +34,7 @@
 - check results: `kubectl get -f myapp.yaml`
 - check with details: `kubectl describe -f myapp.yaml`
 - check logs: `kubectl logs myapp-pod -c myservice`
+- any `-f` file command also works with `-R` for recursive nested dirs
 
 ## 'Pod'
 
